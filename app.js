@@ -2,7 +2,7 @@ const got = require('got');
 const htmlparser = require("htmlparser2");
 const URL = require('url-parse');
 
-const maxDeep = 3;
+const maxDeep = 5;
 let cnt = 0;
 let cntScan = 0;
 let startTime = new Date();
@@ -307,11 +307,11 @@ process.on('uncaughtException', function() {
 
 
 
-scan("", "http://1tv.ru", 0);
-scan("", "http://yahoo.com", 0);
-scan("", "http://cnn.com", 0);
-scan("", "http://ya.ru", 0);
-scan("", "http://google.com", 0);
+// scan("", "http://1tv.ru", 0);
+// scan("", "http://yahoo.com", 0);
+// scan("", "http://cnn.com", 0);
+// scan("", "http://ya.ru", 0);
+// scan("", "http://google.com", 0);
 scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
 scan("", "http://www.alexa.com/topsites", 0);
 scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
