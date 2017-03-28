@@ -6,6 +6,7 @@ const maxDeep = 5;
 let cnt = 0;
 let cntScan = 0;
 let domain = {};
+let statObj = {};
 
 function scan(from_url, to_url, deep){
   cnt = cnt + 1;
@@ -104,12 +105,9 @@ function parseBody(body){
 
   parser.write(body);
   parser.end();
-
 }
 
-
 function parseDeepBody(body, from_URL, to_URL, deep){
-
   let parser = new htmlparser.Parser({
     onopentag: function(name, attribs){
 
@@ -138,7 +136,6 @@ function parseDeepBody(body, from_URL, to_URL, deep){
 
   parser.write(body);
   parser.end();
-
 }
 
 
@@ -247,10 +244,8 @@ function isURLTOFILEValidator(url_to_file) {
 
 
   return false;
-
 }
 
-let statObj = {};
 
 function callStat(topic, info, callbackFunction){
   let d1 = new Date();
@@ -280,7 +275,6 @@ function saveStat(topic, d1, d2, info){
   }
 }
 
-
 function onExit(args){
   console.log("================ " + args + " ===================");
   console.log("Uptime: " + process.uptime());
@@ -299,11 +293,12 @@ process.on('SIGTERM', onExit);
 
 
 
+
 scan("", "http://1tv.ru", 0);
 scan("", "http://yahoo.com", 0);
-// scan("", "http://cnn.com", 0);
-// scan("", "http://ya.ru", 0);
-// scan("", "http://google.com", 0);
-// scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-// scan("", "http://www.alexa.com/topsites", 0);
-// scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+scan("", "http://cnn.com", 0);
+scan("", "http://ya.ru", 0);
+scan("", "http://google.com", 0);
+scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
+scan("", "http://www.alexa.com/topsites", 0);
+scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
