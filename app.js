@@ -1,11 +1,10 @@
 const got = require('got');
-const htmlparser = require("htmlparser2");
 const URL = require('url-parse');
+const htmlparser = require("htmlparser2");
 
 const maxDeep = 5;
 let cnt = 0;
 let cntScan = 0;
-let startTime = new Date();
 let domain = {};
 
 function scan(from_url, to_url, deep){
@@ -17,11 +16,7 @@ function scan(from_url, to_url, deep){
   }
 
   const from_URL = from_url ? new URL(from_url) : null;
-
-  let d1 = new Date();
-  const to_URL = new URL(to_url);
-  let d2 = new Date();
-  saveStat("to_URL", d1, d2, to_url);
+  const to_URL = callStat("to_URL", to_url, function (){return new URL(to_url);})
 
   let dom = domain[to_URL.host];
   if (!dom){
@@ -124,18 +119,11 @@ function parseDeepBody(body, from_URL, to_URL, deep){
           let next_URL = new URL(attribs.href);
           if (to_URL.host != next_URL.host){
 
-            let d1 = new Date();
-            let val = isWWWValidator(to_URL, next_URL);
-            let d2 = new Date();
-            saveStat("isWWWValidator", d1, d2, to_URL.host + " vs " + next_URL.host);
+            let val  = callStat("isWWWValidator", to_URL.host + " vs " + next_URL.host, function (){return isWWWValidator(to_URL, next_URL);})
 
             let val2 = false;
-            if (!val){
-              d1 = new Date();
-              val2 = isSubValidator(to_URL, next_URL);
-              d2 = new Date();
-              saveStat("isSubValidator", d1, d2, to_URL.host + " vs " + next_URL.host);
-            }
+            if (!val)
+              val2  = callStat("isSubValidator", to_URL.host + " vs " + next_URL.host, function (){return isSubValidator(to_URL, next_URL);})
 
             if (!val && !val2)
             // if (!val)
@@ -264,54 +252,58 @@ function isURLTOFILEValidator(url_to_file) {
 
 let statObj = {};
 
+function callStat(topic, info, callbackFunction){
+  let d1 = new Date();
+  let ret = callbackFunction();
+  let d2 = new Date();
+  saveStat(topic, d1, d2, info);
+  return ret;
+}
+
 function saveStat(topic, d1, d2, info){
   let delta = d2.getTime() - d1.getTime();
   let curVal = statObj[topic];
   if (!curVal) {
     let o = {};
-    o.time = delta;
+    o.maxTime = delta;
     o.info = info;
+    o.timeTotal = delta;
+    o.cnt = 1;
     statObj[topic] = o;
   } else {
-    if (delta > curVal.time) {
-      curVal.time = delta;
+    if (delta > curVal.maxTime) {
+      curVal.maxTime = delta;
       curVal.info = info;
     }
+    curVal.timeTotal = curVal.timeTotal + delta;
+    curVal.cnt = curVal.cnt + 1;
   }
-  // console.log("saveStat: " + topic + " = " + delta);
 }
 
-process.on('exit', function() {
-  let endTime = new Date();
-  console.log("============== exit =====================");
-  let delta = endTime.getTime() - startTime.getTime();
-  console.log("Uptime is " + delta/1000);
-  console.log("===================================");
-  // console.log(domain);
 
+function onExit(args){
+  console.log("================ " + args + " ===================");
+  console.log("Uptime: " + process.uptime());
   console.log("URLs: " + cntScan + "/" + cnt)
-  process.exit(1);
-});
-
-process.on('uncaughtException', function() {
-  let endTime = new Date();
-  console.log("=============== uncaughtException ====================");
-  let delta = endTime.getTime() - startTime.getTime();
-  console.log("Uptime is " + delta/1000);
-  console.log("===================================");
+  console.log("================ Statistic ===================");
   // console.log(domain);
-
-  console.log("URLs: " + cntScan + "/" + cnt)
+  console.log(statObj);
   process.exit(1);
-});
+}
+
+process.on('exit', onExit);
+process.on('SIGINT', onExit);
+process.on('SIGTERM', onExit);
 
 
 
-// scan("", "http://1tv.ru", 0);
-// scan("", "http://yahoo.com", 0);
+
+
+scan("", "http://1tv.ru", 0);
+scan("", "http://yahoo.com", 0);
 // scan("", "http://cnn.com", 0);
 // scan("", "http://ya.ru", 0);
 // scan("", "http://google.com", 0);
-scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-scan("", "http://www.alexa.com/topsites", 0);
-scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+// scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
+// scan("", "http://www.alexa.com/topsites", 0);
+// scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
