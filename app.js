@@ -1,12 +1,11 @@
-// const curl = require('curl');
 const got = require('got');
 const htmlparser = require("htmlparser2");
 const URL = require('url-parse');
 
-const maxDeep = 2;
-var cnt = 0;
-var cntScan = 0;
-var startTime = new Date();
+const maxDeep = 3;
+let cnt = 0;
+let cntScan = 0;
+let startTime = new Date();
 let domain = {};
 
 function scan(from_url, to_url, deep){
@@ -87,7 +86,7 @@ function scan(from_url, to_url, deep){
 
 function parseBody(body){
 
-  var parser = new htmlparser.Parser({
+  let parser = new htmlparser.Parser({
     onopentag: function(name, attribs){
       console.log("-------------[ " + name + " ]------------");
 
@@ -116,7 +115,7 @@ function parseBody(body){
 
 function parseDeepBody(body, from_URL, to_URL, deep){
 
-  var parser = new htmlparser.Parser({
+  let parser = new htmlparser.Parser({
     onopentag: function(name, attribs){
 
       if(name === "a"){
@@ -213,26 +212,6 @@ function isSubValidator(URL1, URL2){
 
 }
 
-let statObj = {};
-
-function saveStat(topic, d1, d2, info){
-  let delta = d2.getTime() - d1.getTime();
-  let curVal = statObj[topic];
-  if (!curVal) {
-    let o = {};
-    o.time = delta;
-    o.info = info;
-    statObj[topic] = o;
-  } else {
-    if (delta > curVal.time) {
-      curVal.time = delta;
-      curVal.info = info;
-    }
-  }
-  // console.log("saveStat: " + topic + " = " + delta);
-}
-
-
 function isURLTOFILEValidator(url_to_file) {
   if (!url_to_file || url_to_file.length < 3)
     return false;
@@ -283,8 +262,27 @@ function isURLTOFILEValidator(url_to_file) {
 
 }
 
+let statObj = {};
+
+function saveStat(topic, d1, d2, info){
+  let delta = d2.getTime() - d1.getTime();
+  let curVal = statObj[topic];
+  if (!curVal) {
+    let o = {};
+    o.time = delta;
+    o.info = info;
+    statObj[topic] = o;
+  } else {
+    if (delta > curVal.time) {
+      curVal.time = delta;
+      curVal.info = info;
+    }
+  }
+  // console.log("saveStat: " + topic + " = " + delta);
+}
+
 process.on('exit', function() {
-  var endTime = new Date();
+  let endTime = new Date();
   console.log("============== exit =====================");
   let delta = endTime.getTime() - startTime.getTime();
   console.log("Uptime is " + delta/1000);
@@ -296,7 +294,7 @@ process.on('exit', function() {
 });
 
 process.on('uncaughtException', function() {
-  var endTime = new Date();
+  let endTime = new Date();
   console.log("=============== uncaughtException ====================");
   let delta = endTime.getTime() - startTime.getTime();
   console.log("Uptime is " + delta/1000);
@@ -309,11 +307,11 @@ process.on('uncaughtException', function() {
 
 
 
-// scan("", "http://1tv.ru", 0);
+scan("", "http://1tv.ru", 0);
 scan("", "http://yahoo.com", 0);
-// scan("", "http://cnn.com", 0);
-// scan("", "http://ya.ru", 0);
-// scan("", "http://google.com", 0);
-// scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-// scan("", "http://www.alexa.com/topsites", 0);
-// scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+scan("", "http://cnn.com", 0);
+scan("", "http://ya.ru", 0);
+scan("", "http://google.com", 0);
+scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
+scan("", "http://www.alexa.com/topsites", 0);
+scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
