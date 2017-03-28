@@ -2,7 +2,7 @@ const got = require('got');
 const URL = require('url-parse');
 const htmlparser = require("htmlparser2");
 
-const maxDeep = 5;
+const maxDeep = 2;
 let cnt = 0;
 let cntScan = 0;
 let domain = {};
@@ -11,7 +11,9 @@ let statObj = {};
 function scan(from_url, to_url, deep){
   cnt = cnt + 1;
 
-  if (isURLTOFILEValidator(to_url)){
+  const isURLtoFile = callStat("isURLTOFILEValidator", to_url, function (){return isURLTOFILEValidator(to_url);})
+
+  if (isURLtoFile){
     console.log("SKIP URL by content type Validator! Looks like it's URL to file: " + to_url);
     return;
   }
