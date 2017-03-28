@@ -11,8 +11,8 @@ Pre-requirements
 
 Configuration
 =======================================
-cd scanbot
-npm update
+`cd scanbot`
+`npm update`
 
 
 
