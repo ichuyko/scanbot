@@ -12,14 +12,16 @@ Pre-requirements
 Configuration
 =======================================
 `cd scanbot`
+
 `npm update`
 
 
 
 How to run
 =======================================
-cd scanbot
-npm start
+`cd scanbot`
+
+`npm start`
 
 
 
