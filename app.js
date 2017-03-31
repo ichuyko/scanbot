@@ -2,7 +2,7 @@ const got = require('got');
 const URL = require('url-parse');
 const htmlparser = require("htmlparser2");
 
-const maxDeep = 2;
+const maxDeep = 7;
 let cnt = 0;
 let cntScan = 0;
 let domain = {};
@@ -296,11 +296,11 @@ process.on('SIGTERM', onExit);
 
 
 
-scan("", "http://1tv.ru", 0);
-scan("", "http://yahoo.com", 0);
-scan("", "http://cnn.com", 0);
-scan("", "http://ya.ru", 0);
-scan("", "http://google.com", 0);
-scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-scan("", "http://www.alexa.com/topsites", 0);
+// scan("", "http://1tv.ru", 0);
+// scan("", "http://yahoo.com", 0);
+// scan("", "http://cnn.com", 0);
+// scan("", "http://ya.ru", 0);
+// scan("", "http://google.com", 0);
+// scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
+// scan("", "http://www.alexa.com/topsites", 0);
 scan("", "https://www.redflagnews.com/top-100-conservative/", 0);

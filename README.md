@@ -37,6 +37,4 @@ Release notes
 * Added pure nodejs app
 * Scan hard coded list of URLs with certain deep
 * Show scan progress and some simple result: time, unique URL and logs
-* Speed: 4711/1009, 5209/1233 (uniq URL/sec)
-  
-
+* Speed: 4711/1009, 5209/1233, 20657/4772 (uniq URL/sec)
