@@ -33,6 +33,8 @@ How to run
 Release notes
 =======================================
 
+**v1.2.1**
+* Handle error of IP to Location (version 4/5)
 
 **v1.2.0**
 * Add QProcessor - Mongo based priority queue processor
@@ -45,4 +47,5 @@ Release notes
 * Added pure nodejs app
 * Scan hard coded list of URLs with certain deep
 * Show scan progress and some simple result: time, unique URL and logs
-* Speed: 4711/1009, 5209/1233, 20657/4772 (uniq URL/sec)
+* Speed Scan: 4711/1009, 5209/1233, 20657/4772 (uniq URL/sec)
+* Speed IP to Location: 100/155 (uniq URL/sec)

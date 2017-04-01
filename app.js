@@ -340,10 +340,9 @@ process.on('exit', onExit);
 process.on('SIGINT', onExit);
 process.on('SIGTERM', onExit);
 
-
-process.on('uncaughtException', (err) => {
-  console.log(err);
-});
+// process.on('uncaughtException', (err) => {
+//   console.log(err);
+// });
 
 let qProcess = {};
 
@@ -434,14 +433,6 @@ connectToDB(function() {
           // console.dir(docs);
           _dataCallback(oneDoc, ctx);
         });
-        // cc.findOne({"version" : p}, {}, function(errr, oneDoc) {
-        //   console.log("Found the following record");
-        //   // console.log(oneDoc);
-        //   // console.dir(docs);
-        //   // _dataCallback(oneDoc);
-        // });
-
-
 
     }, function(data, exitCallback, ctx) {
 
@@ -449,18 +440,23 @@ connectToDB(function() {
 
         ipLocation(data.domain, function (err, ipData) {
           // console.log(ipData)
-          console.log((new Date()).getTime() + " : " + data.domain + " in " + ipData.country_name)
+          console.log((new Date()).getTime() + " : " + data.domain)
 
+          // version:
+          //   4 - location found
+          //   5 - error. no lication data
 
+          let ver = (!ipData) ? 5 : 4;
 
           // Update document where a is 2, set b equal to 1
           collection.updateOne({ _id: new ObjectID(data._id.toString()) }
-              , { $set: { location : ipData , version : data.version+1} },
+              , { $set: { location : ipData , version : ver} },
               function(err, result) {
                 // assert.equal(err, null);
                 // assert.equal(1, result.result.n);
-                console.log((new Date()).getTime() + " : " + "Updated the document!");
+                console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
                 // callback(result);
+                cnt = cnt+1;
                 exitCallback(ctx);
               });
 
@@ -468,7 +464,7 @@ connectToDB(function() {
         });
 
     }
-     , true, 5, 300
+     , true, 3, 300
     );
 
 });
