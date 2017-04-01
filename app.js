@@ -1,6 +1,12 @@
 const got = require('got');
 const URL = require('url-parse');
 const htmlparser = require("htmlparser2");
+const MongoClient = require('mongodb').MongoClient;
+const assert = require('assert');
+
+const mongoDB = 'mongodb://localhost:27017/scanbot';
+var db;
+
 
 const maxDeep = 7;
 let cnt = 0;
@@ -27,6 +33,9 @@ function scan(from_url, to_url, deep){
     nd.cont = 1;
     nd["from_" + nd.cont] = from_url;
     domain[to_URL.host] = nd;
+
+    upsetDomain(to_URL.origin);
+
   } else {
     dom.cont = dom.cont+1;
     dom["from_" + dom.cont] = from_url;
@@ -277,6 +286,37 @@ function saveStat(topic, d1, d2, info){
   }
 }
 
+function upsetDomain(domain){
+
+  var collection = db.collection('domains');
+
+  collection.insertOne(
+      {"domain" : domain, "version" : 0},
+      function(err, result) {
+        console.log("Inserted 1 documents into the collection: " + domain);
+
+        // assert.equal(err, null);
+        // assert.equal(3, result.result.n);
+        // assert.equal(3, result.ops.length);
+        // callback(result);
+        // console.log("result:");
+        // console.log(result);
+
+        // process.exit(0);
+      });
+
+}
+
+function connectToDB(callback){
+  MongoClient.connect(mongoDB, function(err, _db) {
+    assert.equal(null, err);
+    db = _db;
+    console.log("Connected correctly to server");
+    callback();
+  });
+
+}
+
 function onExit(args){
   console.log("================ " + args + " ===================");
   console.log("Uptime: " + process.uptime());
@@ -284,6 +324,11 @@ function onExit(args){
   console.log("================ Statistic ===================");
   // console.log(domain);
   console.log(statObj);
+
+  if (db) {
+    db.close();
+    console.log("Connection closed");
+  }
   process.exit(1);
 }
 
@@ -296,11 +341,19 @@ process.on('SIGTERM', onExit);
 
 
 
-// scan("", "http://1tv.ru", 0);
-// scan("", "http://yahoo.com", 0);
-// scan("", "http://cnn.com", 0);
-// scan("", "http://ya.ru", 0);
-// scan("", "http://google.com", 0);
-// scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-// scan("", "http://www.alexa.com/topsites", 0);
-scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+connectToDB(function() {
+
+
+  // upsetDomain("http://mail.ru");
+
+  scan("", "http://yahoo.com", 0);
+  scan("", "http://cnn.com", 0);
+  scan("", "http://ya.ru", 0);
+  scan("", "http://google.com", 0);
+  scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
+  scan("", "http://www.alexa.com/topsites", 0);
+  scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+
+
+});
+

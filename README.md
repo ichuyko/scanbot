@@ -6,7 +6,7 @@ It's a test nodejs/mongodb/neo4j/reatcjs app that scan internet and build graph 
 Pre-requirements
 =======================================
 1. Install nodejs + npm: https://nodejs.org/en/
-
+2. Install https://www.mongodb.com/download-center?jmp=nav#community
 
 
 Configuration
@@ -32,6 +32,9 @@ How to run
 
 Release notes
 =======================================
+
+**v1.1.0**
+* store domains to mondoDB
 
 **v1.0.0**
 * Added pure nodejs app
