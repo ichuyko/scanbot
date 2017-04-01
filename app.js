@@ -2,10 +2,13 @@ const got = require('got');
 const URL = require('url-parse');
 const htmlparser = require("htmlparser2");
 const MongoClient = require('mongodb').MongoClient;
+var ObjectID = require('mongodb').ObjectID;
 const assert = require('assert');
+const ipLocation = require('ip-location')
 
 const mongoDB = 'mongodb://localhost:27017/scanbot';
 var db;
+var collection;
 
 
 const maxDeep = 7;
@@ -34,7 +37,7 @@ function scan(from_url, to_url, deep){
     nd["from_" + nd.cont] = from_url;
     domain[to_URL.host] = nd;
 
-    upsetDomain(to_URL.origin);
+    upsetDomain(to_URL.hostname);
 
   } else {
     dom.cont = dom.cont+1;
@@ -288,10 +291,10 @@ function saveStat(topic, d1, d2, info){
 
 function upsetDomain(domain){
 
-  var collection = db.collection('domains');
+  // let collection = db.collection('domains');
 
   collection.insertOne(
-      {"domain" : domain, "version" : 0},
+      {"domain" : domain, "version" : 3},
       function(err, result) {
         console.log("Inserted 1 documents into the collection: " + domain);
 
@@ -311,6 +314,7 @@ function connectToDB(callback){
   MongoClient.connect(mongoDB, function(err, _db) {
     assert.equal(null, err);
     db = _db;
+    collection = db.collection('domains');
     console.log("Connected correctly to server");
     callback();
   });
@@ -337,7 +341,69 @@ process.on('SIGINT', onExit);
 process.on('SIGTERM', onExit);
 
 
+process.on('uncaughtException', (err) => {
+  console.log(err);
+});
 
+let qProcess = {};
+
+function registerQProcessor(id, getData, processData, autoStart, maxPriority, delay){
+  let proc = qProcess[id];
+  if (proc) return;
+
+  proc = {};
+  proc.getData = getData;
+  proc.processData = processData;
+  proc.autoStart = autoStart;
+  proc.maxPriority = maxPriority;
+  proc.delay = delay;
+
+  proc.priority = 0;
+
+  // proc.nextCall = function (newP){
+  //   this.priority = newP;
+  //   this.nextCall();
+  // };
+
+  proc.nextCall = function (){
+    this.process(this.priority);
+    // setTimeout(this.process(this.priority), this.delay);
+  };
+
+  proc.processDataExitCallback = function(ctx){
+    ctx.priority = 0;
+    ctx.nextCall();
+  };
+
+
+  proc.dataCallback = function(data, ctx) {
+    if (!data) {
+      ctx.priority = ctx.priority <= ctx.maxPriority ? ctx.priority + 1 : 0;
+      //check for no data for any prioroty and extend delay! convert it to listener;
+
+
+      ctx.nextCall();
+    } else {
+      ctx.processData(data, ctx.processDataExitCallback, ctx);
+    }
+  }
+
+  proc.process = function(p){
+    this.getData(p, this.dataCallback, this);
+  };
+
+
+
+
+
+  qProcess[id] = proc;
+  if (autoStart)
+    qProcess[id].nextCall();
+}
+
+// function registerQProcessor(id, getData, processData){
+//   registerQProcessor(id, getData, processData, true, 10, 300);
+// }
 
 
 
@@ -346,14 +412,64 @@ connectToDB(function() {
 
   // upsetDomain("http://mail.ru");
 
-  scan("", "http://yahoo.com", 0);
-  scan("", "http://cnn.com", 0);
-  scan("", "http://ya.ru", 0);
-  scan("", "http://google.com", 0);
-  scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-  scan("", "http://www.alexa.com/topsites", 0);
-  scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+  // scan("", "http://1tv.ru", 0);
+  // scan("", "http://yahoo.com", 0);
+  // scan("", "http://cnn.com", 0);
+  // scan("", "http://ya.ru", 0);
+  // scan("", "http://google.com", 0);
+  // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
+  // scan("", "http://www.alexa.com/topsites", 0);
+  // scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
 
+
+  // if (1===3)
+  registerQProcessor("location",
+      function (p, _dataCallback, ctx){
+
+        collection.findOne({"version" : p}, {}, function (err, oneDoc) {
+
+          console.log((new Date()).getTime() + " : " + "Found the following record: priority : " + p);
+          console.log((new Date()).getTime() + " : " + "Found the following record: " + ((!oneDoc) ? "NULL" : oneDoc.domain));
+          // console.log(oneDoc);
+          // console.dir(docs);
+          _dataCallback(oneDoc, ctx);
+        });
+        // cc.findOne({"version" : p}, {}, function(errr, oneDoc) {
+        //   console.log("Found the following record");
+        //   // console.log(oneDoc);
+        //   // console.dir(docs);
+        //   // _dataCallback(oneDoc);
+        // });
+
+
+
+    }, function(data, exitCallback, ctx) {
+
+
+
+        ipLocation(data.domain, function (err, ipData) {
+          // console.log(ipData)
+          console.log((new Date()).getTime() + " : " + data.domain + " in " + ipData.country_name)
+
+
+
+          // Update document where a is 2, set b equal to 1
+          collection.updateOne({ _id: new ObjectID(data._id.toString()) }
+              , { $set: { location : ipData , version : data.version+1} },
+              function(err, result) {
+                // assert.equal(err, null);
+                // assert.equal(1, result.result.n);
+                console.log((new Date()).getTime() + " : " + "Updated the document!");
+                // callback(result);
+                exitCallback(ctx);
+              });
+
+
+        });
+
+    }
+     , true, 5, 300
+    );
 
 });
 

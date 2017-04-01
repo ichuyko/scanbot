@@ -33,8 +33,13 @@ How to run
 Release notes
 =======================================
 
+
+**v1.2.0**
+* Add QProcessor - Mongo based priority queue processor
+* Fetch the location of each URL using QProcessor
+
 **v1.1.0**
-* store domains to mondoDB
+* Store domains to mongoDB
 
 **v1.0.0**
 * Added pure nodejs app
