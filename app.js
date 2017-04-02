@@ -311,17 +311,6 @@ function upsetDomain(domain){
 
 }
 
-function connectToDB(callback){
-  MongoClient.connect(mongoDB, function(err, _db) {
-    assert.equal(null, err);
-    db = _db;
-    collection = db.collection('domains');
-    console.log("Connected correctly to server");
-    callback();
-  });
-
-}
-
 function onExit(args){
   console.log("================ " + args + " ===================");
   console.log("Uptime: " + process.uptime());
@@ -363,12 +352,12 @@ function registerQProcessor(id, getData, processData, autoStart, maxPriority, de
 
   proc.nextCall = function(ctx){
       setTimeout(function() {
-        ctx.getData(ctx.priority).then(function(data) {
+        ctx.getData(ctx.priority, ctx).then(function(data) {
           if (!data) {
             //check for no data for any prioroty and extend delay! convert it to listener;
             //exit on no data for max p
             if (ctx.priority == ctx.maxPriority) {
-              console.log("no data for max priority! Let's wait 5 sec");
+              console.log("Queue '" + ctx.id + "' is empty! Starts 5 sec monitor...");
               ctx.priority = 0;
               setTimeout(function() {
                 ctx.nextCall(ctx);
@@ -399,26 +388,6 @@ function registerQProcessor(id, getData, processData, autoStart, maxPriority, de
     qProcess[id].nextCall(proc);
 }
 
-// function registerQProcessor(id, getData, processData){
-//   registerQProcessor(id, getData, processData, true, 10, 300);
-// }
-
-
-if (1===3)
-connectToDB(function() {
-  // upsetDomain("http://mail.ru");
-
-  // scan("", "http://1tv.ru", 0);
-  // scan("", "http://yahoo.com", 0);
-  // scan("", "http://cnn.com", 0);
-  // scan("", "http://ya.ru", 0);
-  // scan("", "http://google.com", 0);
-  // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-  // scan("", "http://www.alexa.com/topsites", 0);
-  // scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
-
-});
-
 
 
 function connectToDB(){
@@ -438,44 +407,6 @@ function connectToDB(){
 
   });
 }
-
-// function delay(ms){
-//   return new Promise(function(resolve, reject){
-//     if (!ms || ms === 0)
-//         reject(ms);
-//     else
-//       setTimeout(resolve, ms);
-//   })
-// };
-
-
-// delay(1000).then(function (){
-//   console.log("then ok.");
-// }).catch(function (err){
-//   console.log("catch!!!. err = " + err);
-// });
-
-// MongoClient.connect(mongoDB).then(function(_db){
-//   db = _db;
-//   collection = db.collection('domains');
-//   console.log("Connected correctly to server");
-// }).catch(function(err) {
-//   console.log("Connection to MongoDB error:");
-//   console.log(err);
-// });
-
-
-// function getConn(urll) {
-//   return new Promise(function(resolve) {
-//     resolve(urll+"?a=qqq", "ok");
-//   });
-// }
-//
-// getConn("http://aa").then(function(v1, v2) {
-//   console.log("v1 = " + v1);
-//   console.log("v2 = " + v2);
-// });
-
 
 
 connectToDB().then(main);
@@ -497,12 +428,12 @@ function main(){
 
   // if (1===4)
   registerQProcessor("location",
-      function (p, _dataCallback, ctx){
+      function (p, ctx){
         return new Promise(function(resolve) {
           collection.findOne({"version" : p}, {}).then(function (oneDoc) {
 
-            console.log((new Date()).getTime() + " : " + "Found the following record: priority : " + p);
-            console.log((new Date()).getTime() + " : " + "Found the following record: " + ((!oneDoc) ? "NULL" : oneDoc.domain));
+            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : Priority : " + p);
+            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : oneDoc.domain));
             // console.log(oneDoc);
             // console.dir(docs);
             // if (typeof _dataCallback !== 'function') {
