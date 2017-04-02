@@ -447,23 +447,22 @@ function main(){
       }, function(data) {
         return new Promise(function(resolve){
 
-          ipLocation(data.domain, function (err, ipData) {
-            // console.log(ipData)
+          let updateRec = function(version, data, ipData, _resolve){
             console.log((new Date()).getTime() + " : " + data.domain)
-
-            // version:
-            //   4 - location found
-            //   5 - error. no lication data
-
-            let ver = (!ipData) ? 5 : 4;
-
-            // Update document where a is 2, set b equal to 1
-            collection.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : ver} })
+            collection.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : version} })
             .then(function(result) {
               console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
-              resolve();
+              _resolve();
             });
 
+          };
+
+          ipLocation(data.domain)
+          .then(function (ipData) {
+            updateRec(4, data, ipData, resolve);
+          })
+          .catch(function (err) {
+            updateRec(5, data, null, resolve);
           });
 
 
