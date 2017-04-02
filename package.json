@@ -1,11 +1,12 @@
 {
   "name": "scanbot",
-  "version": "1.2.1",
+  "version": "1.4.3",
   "private": true,
   "scripts": {
     "start": "node app.js"
   },
   "dependencies": {
+    "bluebird": "^3.5.0",
     "got": "^6.7.1",
     "htmlparser2": "^3.9.2",
     "ip-location": "^1.0.1",

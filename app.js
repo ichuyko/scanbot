@@ -2,16 +2,17 @@ const got = require('got');
 const URL = require('url-parse');
 const htmlparser = require("htmlparser2");
 const MongoClient = require('mongodb').MongoClient;
-var ObjectID = require('mongodb').ObjectID;
+const ObjectID = require('mongodb').ObjectID;
 const assert = require('assert');
-const ipLocation = require('ip-location')
+const ipLocation = require('ip-location');
+const Promise = require("bluebird");
 
 const mongoDB = 'mongodb://localhost:27017/scanbot';
 var db;
 var collection;
 
 
-const maxDeep = 7;
+const maxDeep = 1;
 let cnt = 0;
 let cntScan = 0;
 let domain = {};
@@ -340,17 +341,18 @@ process.on('exit', onExit);
 process.on('SIGINT', onExit);
 process.on('SIGTERM', onExit);
 
-// process.on('uncaughtException', (err) => {
-//   console.log(err);
-// });
+process.on('uncaughtException', (err) => {
+  console.log(err);
+});
 
 let qProcess = {};
 
 function registerQProcessor(id, getData, processData, autoStart, maxPriority, delay){
   let proc = qProcess[id];
-  if (proc) return;
+  if (!!proc) return;
 
   proc = {};
+  proc.id = id;
   proc.getData = getData;
   proc.processData = processData;
   proc.autoStart = autoStart;
@@ -359,45 +361,42 @@ function registerQProcessor(id, getData, processData, autoStart, maxPriority, de
 
   proc.priority = 0;
 
-  // proc.nextCall = function (newP){
-  //   this.priority = newP;
-  //   this.nextCall();
-  // };
+  proc.nextCall = function(ctx){
+      setTimeout(function() {
+        ctx.getData(ctx.priority).then(function(data) {
+          if (!data) {
+            //check for no data for any prioroty and extend delay! convert it to listener;
+            //exit on no data for max p
+            if (ctx.priority == ctx.maxPriority) {
+              console.log("no data for max priority! Let's wait 5 sec");
+              ctx.priority = 0;
+              setTimeout(function() {
+                ctx.nextCall(ctx);
+              }, 5000);
+            } else {
+              ctx.priority = ctx.priority + 1;
+              ctx.nextCall(ctx);
+            }
 
-  proc.nextCall = function (){
-    this.process(this.priority);
-    // setTimeout(this.process(this.priority), this.delay);
+          } else {
+
+            ctx.processData(data).then(function() {
+              ctx.priority = 0;
+              ctx.nextCall(ctx);
+            });
+
+          }
+
+
+
+        });
+      }, ctx.delay);
   };
-
-  proc.processDataExitCallback = function(ctx){
-    ctx.priority = 0;
-    ctx.nextCall();
-  };
-
-
-  proc.dataCallback = function(data, ctx) {
-    if (!data) {
-      ctx.priority = ctx.priority <= ctx.maxPriority ? ctx.priority + 1 : 0;
-      //check for no data for any prioroty and extend delay! convert it to listener;
-
-
-      ctx.nextCall();
-    } else {
-      ctx.processData(data, ctx.processDataExitCallback, ctx);
-    }
-  }
-
-  proc.process = function(p){
-    this.getData(p, this.dataCallback, this);
-  };
-
-
-
 
 
   qProcess[id] = proc;
   if (autoStart)
-    qProcess[id].nextCall();
+    qProcess[id].nextCall(proc);
 }
 
 // function registerQProcessor(id, getData, processData){
@@ -405,10 +404,8 @@ function registerQProcessor(id, getData, processData, autoStart, maxPriority, de
 // }
 
 
-
+if (1===3)
 connectToDB(function() {
-
-
   // upsetDomain("http://mail.ru");
 
   // scan("", "http://1tv.ru", 0);
@@ -420,52 +417,128 @@ connectToDB(function() {
   // scan("", "http://www.alexa.com/topsites", 0);
   // scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
 
-
-  // if (1===3)
-  registerQProcessor("location",
-      function (p, _dataCallback, ctx){
-
-        collection.findOne({"version" : p}, {}, function (err, oneDoc) {
-
-          console.log((new Date()).getTime() + " : " + "Found the following record: priority : " + p);
-          console.log((new Date()).getTime() + " : " + "Found the following record: " + ((!oneDoc) ? "NULL" : oneDoc.domain));
-          // console.log(oneDoc);
-          // console.dir(docs);
-          _dataCallback(oneDoc, ctx);
-        });
-
-    }, function(data, exitCallback, ctx) {
-
-
-
-        ipLocation(data.domain, function (err, ipData) {
-          // console.log(ipData)
-          console.log((new Date()).getTime() + " : " + data.domain)
-
-          // version:
-          //   4 - location found
-          //   5 - error. no lication data
-
-          let ver = (!ipData) ? 5 : 4;
-
-          // Update document where a is 2, set b equal to 1
-          collection.updateOne({ _id: new ObjectID(data._id.toString()) }
-              , { $set: { location : ipData , version : ver} },
-              function(err, result) {
-                // assert.equal(err, null);
-                // assert.equal(1, result.result.n);
-                console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
-                // callback(result);
-                cnt = cnt+1;
-                exitCallback(ctx);
-              });
-
-
-        });
-
-    }
-     , true, 3, 300
-    );
-
 });
 
+
+
+function connectToDB(){
+  return new Promise(function(resolve, reject){
+
+    MongoClient.connect(mongoDB).then(function(_db){
+      db = _db;
+      collection = db.collection('domains');
+      console.log("Connected correctly to server");
+      resolve(db);
+    }).catch(function(err) {
+      console.log("Connection to MongoDB error:");
+      console.log(err);
+      reject(err);
+    });
+
+
+  });
+}
+
+// function delay(ms){
+//   return new Promise(function(resolve, reject){
+//     if (!ms || ms === 0)
+//         reject(ms);
+//     else
+//       setTimeout(resolve, ms);
+//   })
+// };
+
+
+// delay(1000).then(function (){
+//   console.log("then ok.");
+// }).catch(function (err){
+//   console.log("catch!!!. err = " + err);
+// });
+
+// MongoClient.connect(mongoDB).then(function(_db){
+//   db = _db;
+//   collection = db.collection('domains');
+//   console.log("Connected correctly to server");
+// }).catch(function(err) {
+//   console.log("Connection to MongoDB error:");
+//   console.log(err);
+// });
+
+
+// function getConn(urll) {
+//   return new Promise(function(resolve) {
+//     resolve(urll+"?a=qqq", "ok");
+//   });
+// }
+//
+// getConn("http://aa").then(function(v1, v2) {
+//   console.log("v1 = " + v1);
+//   console.log("v2 = " + v2);
+// });
+
+
+
+connectToDB().then(main);
+
+
+function main(){
+
+  console.log("main()");
+
+  // scan("", "http://1tv.ru", 0);
+  // scan("", "http://yahoo.com", 0);
+  // scan("", "http://cnn.com", 0);
+  // scan("", "http://ya.ru", 0);
+  // scan("", "http://google.com", 0);
+  // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
+  // scan("", "http://www.alexa.com/topsites", 0);
+  // scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+
+
+  // if (1===4)
+  registerQProcessor("location",
+      function (p, _dataCallback, ctx){
+        return new Promise(function(resolve) {
+          collection.findOne({"version" : p}, {}).then(function (oneDoc) {
+
+            console.log((new Date()).getTime() + " : " + "Found the following record: priority : " + p);
+            console.log((new Date()).getTime() + " : " + "Found the following record: " + ((!oneDoc) ? "NULL" : oneDoc.domain));
+            // console.log(oneDoc);
+            // console.dir(docs);
+            // if (typeof _dataCallback !== 'function') {
+            //   console.log("WTF2 ?!");
+            // }
+
+            resolve(oneDoc);
+          });
+
+        });
+      }, function(data) {
+        return new Promise(function(resolve){
+
+          ipLocation(data.domain, function (err, ipData) {
+            // console.log(ipData)
+            console.log((new Date()).getTime() + " : " + data.domain)
+
+            // version:
+            //   4 - location found
+            //   5 - error. no lication data
+
+            let ver = (!ipData) ? 5 : 4;
+
+            // Update document where a is 2, set b equal to 1
+            collection.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : ver} })
+            .then(function(result) {
+              console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
+              resolve();
+            });
+
+          });
+
+
+        });
+      }, true, 3, 50
+  );
+
+
+}

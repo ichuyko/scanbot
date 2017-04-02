@@ -1,5 +1,5 @@
 # scanbot
-It's a test nodejs/mongodb/neo4j/reatcjs app that scan internet and build graph of cross links between sites.
+It's a test nodejs/promise/mongodb app that scan internet and build graph of cross links between sites.
 
 
 
@@ -32,6 +32,12 @@ How to run
 
 Release notes
 =======================================
+
+**v1.4.3**
+* Handle empty queue
+* Add queue monitor for new items
+* ref QProcessor with Promise
+* ref connection to MongoDB with Promise
 
 **v1.2.1**
 * Handle error of IP to Location (version 4/5)
