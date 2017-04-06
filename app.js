@@ -538,7 +538,7 @@ function main(){
   scan("", "https://www.redflagnews.com/top-100-conservative/", 3);
 
 
-  // if (1===4)
+  if (1===4)
   registerQProcessor("location",
       function (p, ctx){
         return new Promise(function(resolve) {
@@ -589,6 +589,7 @@ function main(){
       }, function(data) {
         return new Promise(function(resolve){
           scan(data.from_url.href, data.to_url.href, data.deep).then(function(parse_response) {
+            let timestamp = (new Date()).getTime();
             collection_scan_raw.updateOne({ _id: new ObjectID(data._id.toString()) }, {$inc: {deep: -1}, $set : {version: parse_response.version, message:parse_response.message, timestamp : timestamp}, })
             .then(function(result) {
               console.log((new Date()).getTime() + " : " + "Updated the document from queue. Next...");
