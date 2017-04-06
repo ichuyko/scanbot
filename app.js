@@ -1,66 +1,258 @@
-const got = require('got');
-const URL = require('url-parse');
-const htmlparser = require("htmlparser2");
-const MongoClient = require('mongodb').MongoClient;
-const ObjectID = require('mongodb').ObjectID;
-const assert = require('assert');
-const ipLocation = require('ip-location');
-const Promise = require("bluebird");
+const
+    got = require('got');
+    URL = require('url-parse'),
+    htmlparser = require("htmlparser2"),
+    MongoClient = require('mongodb').MongoClient,
+    ObjectID = require('mongodb').ObjectID,
+    assert = require('assert'),
+    ipLocation = require('ip-location'),
+    Promise = require("bluebird");
 
 const mongoDB = 'mongodb://localhost:27017/scanbot';
 var db;
-var collection;
+var collection_domain;
+var collection_scan_raw;
 
+//load on app start from mongo!
+// {host: facebook.com}
+var scanned_hosts = {};
 
-const maxDeep = 1;
 let cnt = 0;
 let cntScan = 0;
 let domain = {};
 let statObj = {};
 
-function scan(from_url, to_url, deep){
-  cnt = cnt + 1;
+let i = 1;
 
-  const isURLtoFile = callStat("isURLTOFILEValidator", to_url, function (){return isURLTOFILEValidator(to_url);})
 
-  if (isURLtoFile){
-    console.log("SKIP URL by content type Validator! Looks like it's URL to file: " + to_url);
-    return;
+function toURL(url) {
+  let URL_obj = new URL(url);
+  let d = URL_obj.hostname.split('.');
+  let len = d.length;
+  let isSecondLevelDomain = true;
+
+  if (len === 1)
+    URL_obj.domain = "";
+  else if (len === 2)
+    URL_obj.domain = URL_obj.hostname;
+  else {
+    URL_obj.domain = d[len - 2] + "." + d[len - 1];
+    isSecondLevelDomain = false;
   }
+  URL_obj.isSecondLevelDomain = isSecondLevelDomain;
 
-  const from_URL = from_url ? new URL(from_url) : null;
-  const to_URL = callStat("to_URL", to_url, function (){return new URL(to_url);})
+  //cut "www." from host
+  let hostNoWWW = URL_obj.host;
+  len = hostNoWWW.length;
+  if (len > 4 && hostNoWWW.startsWith("www."))
+    hostNoWWW = hostNoWWW.substring(4, len);
+  URL_obj.hostNoWWW = hostNoWWW;
 
-  let dom = domain[to_URL.host];
-  if (!dom){
-    let nd = {};
-    nd.cont = 1;
-    nd["from_" + nd.cont] = from_url;
-    domain[to_URL.host] = nd;
 
-    upsetDomain(to_URL.hostname);
+  let scan_id = URL_obj.hostNoWWW + URL_obj.pathname;
+  len = scan_id.length;
+  if (len > 1) {
+      if (scan_id[len - 1] == "/")
+        scan_id = scan_id.substring(0, len-1);
+    }
+    URL_obj.scan_id = scan_id;
+    URL_obj.isPathname = (URL_obj.pathname.length > 0 &&
+    URL_obj.pathname !== "/");
+    return URL_obj;
+}
 
+function getDomain(domain){
+  return new Promise(function(resolve, reject) {
+    collection_domain.findOne({"domain" : domain}, {_id:true, domain:true}).then(function (oneDoc) {
+      resolve(oneDoc);
+    }).catch(function(error) {
+      reject(error);
+    })
+  });
+}
+
+function insertNewDomain(new_URL){
+  return new Promise(function(resolve, reject) {
+    let subDomain = new_URL.hostname.replace('.', ',');
+    let newDomainRec = {"domain" : new_URL.domain, count:1};
+    newDomainRec[subDomain] =  {count : 1};
+
+    collection_domain.insertOne(newDomainRec).then(function (oneDoc) {
+      resolve(newDomainRec);
+    }).catch(function(error) {
+      reject(error);
+    })
+  });
+}
+
+function getSubDomainsObj(domain, _URL){
+  let path = "";
+  let curr_path;
+
+  if (_URL.isSecondLevelDomain) {
+    curr_path = _URL.hostname;//.replace('.', ',');
+    domain["subdomain"] = {domain: curr_path, count: "+1"};
+    // path.push(curr_path);
   } else {
-    dom.cont = dom.cont+1;
-    dom["from_" + dom.cont] = from_url;
-    console.log("[" + cnt + ", " + deep + "] " + "SKIP DOUBLE SCAN of " + to_URL.host + " FROM " + from_url);
-    return;
+    let doms = _URL.hostname.split('.');
+    let len = doms.length;
+    let prev = doms[len - 2] + "." + doms[len - 1];
+    let obj = {domain: prev, count: "+1"};
+    let curr_obj;
+    path = path + "subdomain.";
+
+    curr_obj = domain;
+    for (let i = len - 3; i >= 0; i--) {
+      curr_path = doms[i] + "." + prev
+      curr_obj["subdomain"] = {domain: curr_path, count: "+1"};
+      prev = curr_path;
+      path = path + "subdomain.";
+      curr_obj = curr_obj["subdomain"];
+    }
   }
 
-  console.log("[" + cnt + ", " + deep + "] " + from_url + " => " + to_url + "  ] =============");
-  // console.log("Send request: " + new Date());
+  let up = undefined;
 
-  if (deep > maxDeep) {
-    console.log("[" + cnt + ", " + deep + "] " + "MaxDeep : " + to_url)
-    return;
+  if (_URL.isPathname) {
+    let find = {};
+    find[path + "domain"] = curr_path;
+    let update = {};
+    update[path + "paths"] = {$addToSet : {path: _URL.pathname}};
+
+    // {"subdomain.subdomain.paths.path": "/contact"} , {$inc: {"subdomain.subdomain.paths.$.count": 1}}
+    let incFind = {};
+    incFind[path + "paths.path"] = {path: _URL.pathname};
+    let incUpdate = {};
+    let v = {};
+    v[path + "paths.$.count"] = 1;
+    incUpdate[path + "paths.path"] = {$inc: v};
+
+    up = {find: find, update: update, incFind: incFind, incUpdate: incUpdate};
   }
 
-  // console.log("[" + cnt + ", " + deep + "] " + "Deep[" + deep + "]: " + "scan FROM " + from_url + " TO " + to_url)
+  return up;
+}
 
-  cntScan = cntScan + 1;
-  console.log("cntScan = " + cntScan);
-  let ops = {timeout:6000};//, agent: "Mozilla/5.0 (iPad; CPU OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1"};
-  got(to_url, ops)
+function scan(from_url, to_url, deep) {
+  return new Promise(function(resolve, reject) {
+
+
+    cnt = cnt + 1;
+
+    const isURLtoFile = callStat("isURLTOFILEValidator", to_url, function() {
+      return isURLTOFILEValidator(to_url);
+    })
+
+    if (isURLtoFile) {
+      console.log(
+          "SKIP URL by content type Validator! Looks like it's URL to file: " +
+          to_url);
+      return;
+    }
+
+    const from_URL = toURL(from_url);
+    const to_URL = callStat("to_URL", to_url, function() {
+      return toURL(to_url);
+    })
+
+    //insert to scan_raw mongo
+    // let timestamp = (new Date()).getTime();
+    // collection_scan_raw.insertOne({
+    //   type: 1,
+    //   date: timestamp,
+    //   version: 0,
+    //   priority: 3,
+    //   from: from_URL,
+    //   from_scan_id: from_URL.scan_id,
+    //   to: to_URL,
+    //   to_scan_id: to_URL.scan_id,
+    //   deep: maxDeep - deep
+    // }).then(function(result) {
+    //   console.log("Inserted to scan_raw");
+    // }).catch(function(error) {
+    //   console.log("ERROR: Insert to scan_raw:");
+    //   console.log(error);
+    // });
+
+
+    //
+    // // let from_URL2 = toURL("http://facebook.com/about/ivandj");
+    // let from_URL2 = toURL("http://info.home.facebook.com/ivandj");
+    // // let to_URL2 = toURL("http://ok.mail.ru/profile/ivandj/");
+    // let from_domain = {}, to_domain = {};
+    // let from_incPath, to_incPath;
+    //
+    // from_incPath = getSubDomainsObj(from_domain, from_URL2);
+    // // to_incPath = getSubDomainsObj(to_domain, to_URL2);
+    //
+    // let from_FROM = {};
+    // from_FROM.from = from_incPath;
+    //
+    //
+    // // all pathname (scan_id)
+    // if (from_incPath) {
+    //   collection_domain.updateOne(from_incPath.find, from_incPath.update).then(function(up_data) {
+    //     console.log(up_data);
+    //
+    //     // db.domain.update({"subdomain.subdomain.paths.path": "/contact"} , {$inc: {"subdomain.subdomain.paths.$.count": 1}})
+    //     collection_domain.updateOne(from_incPath.findInc, from_incPath.updateInc).then(function(inc_data) {
+    //       console.log(inc_data);
+    //
+    //
+    //     });
+    //
+    //   });
+    // }
+
+    // return;
+
+    // collection_domain.findOneAndUpdate({dom:123}, {dom:123, count:1}).then(function(result) {
+    // // collection_domain.findOneAndUpdate({dom:123}, {$inc : {count: 1}}).then(function(result) {
+    //   console.log("Inserted to scan_raw");
+    //
+    // }).catch(function(error) {
+    //   console.log("ERROR: Insert to scan_raw:");
+    //   console.log(error);
+    // });
+
+
+
+
+
+
+
+    let dom = domain[to_URL.scan_id];
+    if (!dom){
+      let nd = {};
+      nd.cont = 1;
+      nd["from_" + nd.cont] = from_url;
+      domain[to_URL.scan_id] = nd;
+
+      // upsetDomain(to_URL.hostname);
+
+    } else {
+      dom.cont = dom.cont+1;
+      dom["from_" + dom.cont] = from_url;
+      console.log("[" + cnt + ", " + deep + "] " + "SKIP DOUBLE SCAN of " + to_URL.host + " FROM " + from_url);
+      return;
+    }
+
+
+
+    console.log("[" + cnt + ", " + deep + "] " + from_url + " => " + to_url + "  ] =============");
+    // console.log("Send request: " + new Date());
+
+    if (deep == 0) {
+      console.log("[" + cnt + ", " + deep + "] " + "stop by deep : " + to_url)
+      return;
+    }
+
+    // console.log("[" + cnt + ", " + deep + "] " + "Deep[" + deep + "]: " + "scan FROM " + from_url + " TO " + to_url)
+
+    cntScan = cntScan + 1;
+    console.log("cntScan = " + cntScan);
+    let ops = {timeout:6000};//, agent: "Mozilla/5.0 (iPad; CPU OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1"};
+    got(to_url, ops)
     .then(response => {
       // console.log("Response: " + new Date());
       //
@@ -68,124 +260,129 @@ function scan(from_url, to_url, deep){
       // console.log("Response: " + response.body);
 
       // parseBody(response.body);
-    console.log("[" + cnt + ", " + deep + "] " + "scan RESPONSE FROM " + from_url + " TO " + to_url)
+      console.log("[" + cnt + ", " + deep + "] " + "scan RESPONSE FROM " + from_url + " TO " + to_url)
 
-    let contentType = response.headers["content-type"];
-    if (!contentType.includes("text/html")){
-      console.log("SKIP content-type : " + contentType + "   FROM " + to_url);
-      return;
-    }
-    parseDeepBody(response.body, from_URL, to_URL, deep);
-  })
+      let contentType = response.headers["content-type"];
+      if (!contentType.includes("text/html")){
+        console.log("SKIP content-type : " + contentType + "   FROM   " + to_url);
+        return;
+      }
+      parseBody(response.body, from_URL, to_URL, deep).then(function(parse_result) {
+
+        if (parse_result && parse_result.a && parse_result.a.length > 0){
+          let newURLs = [];
+          parse_result.a.forEach(function(a_href) {
+            let timestamp = (new Date()).getTime();
+            newURLs.push({timestamp: timestamp, priority: 3, version: 0, url: a_href, deep: parse_result.deep, from_url: parse_result.from_URL});
+          });
+
+
+          collection_scan_raw.insertMany(newURLs).then(function(r) {
+            console.log(r.insertedCount);
+          });
+        }
+
+
+      });
+    })
     .catch(error => {
       console.log("GOT Error: " + error);
 
     });
 
 
-  // var options = {};
-  // curl.get(to_url, options, function(err, response, body) {
-  //   console.log("Response: " + new Date());
-  //
-  //   console.log("response.headers.server: " + response.headers.server);
-  //   console.log("Response: " + body);
-  //   parseBody(body);
-  // });
+    // var options = {};
+    // curl.get(to_url, options, function(err, response, body) {
+    //   console.log("Response: " + new Date());
+    //
+    //   console.log("response.headers.server: " + response.headers.server);
+    //   console.log("Response: " + body);
+    //   parseBody(body);
+    // });
 
 
+
+  });
 }
 
-function parseBody(body){
+function parseBody(body, from_URL, to_URL, deep){
+  return new Promise(function(resolve, reject) {
 
-  let parser = new htmlparser.Parser({
-    onopentag: function(name, attribs){
-      console.log("-------------[ " + name + " ]------------");
+    let parse_result = {a:[], script:[], css:[], img:[], link: []};
+    let parser = new htmlparser.Parser({
+      onopentag: function(name, attribs){
 
-      if(name === "script"){
-        console.log("type: " + attribs.type);
-        console.log("src: " + attribs.src);
-      } else if(name === "a"){
-        console.log("href: " + attribs.href);
-      } else if(name === "link"){
-        console.log("rel: " + attribs.rel);
-        console.log("type: " + attribs.type);
-        console.log("href: " + attribs.href);
-      } else if(name === "img"){
-        console.log("src: " + attribs.src);
-      }
+        if(name === "script"){
+          console.log("type: " + attribs.type);
+          console.log("src: " + attribs.src);
+          let src = attribs.src;
+          if (src && src.startsWith("//"))
+            src = to_URL.protocol + src;
 
-      console.log("-----------------------");
-    }
-    }, {decodeEntities: true});
+          if (src)
+            parse_result.script.push({type: attribs.type, src: src});
+        } else if(name === "a"){
+          // console.log("href: " + attribs.href);
+          if (attribs && attribs.href && attribs.href.length > 2 ) {
+            // //mail.ru ???? //attribs.href.startsWith("http")
+            let href = attribs.href;
+            if (href.startsWith("//"))
+              href = to_URL.protocol + href;
 
-  parser.write(body);
-  parser.end();
-}
+            let next_URL = toURL(href);
+            if (to_URL.scan_id != next_URL.scan_id && href.startsWith("http")){
 
-function parseDeepBody(body, from_URL, to_URL, deep){
-  let parser = new htmlparser.Parser({
-    onopentag: function(name, attribs){
+              // let val  = callStat("isWWWValidator", to_URL.host + " vs " + next_URL.host, function (){return isWWWValidator(to_URL, next_URL);})
+              if (!isSubValidator(to_URL, next_URL))
+                if (!isURLTOFILEValidator(href))
+                  parse_result.a.push(href);
 
-      if(name === "a"){
-        // console.log("href: " + attribs.href);
-        if (attribs && attribs.href && attribs.href.length > 4 && attribs.href.startsWith("http") ) {
-          let next_URL = new URL(attribs.href);
-          if (to_URL.host != next_URL.host){
 
-            let val  = callStat("isWWWValidator", to_URL.host + " vs " + next_URL.host, function (){return isWWWValidator(to_URL, next_URL);})
 
-            let val2 = false;
-            if (!val)
-              val2  = callStat("isSubValidator", to_URL.host + " vs " + next_URL.host, function (){return isSubValidator(to_URL, next_URL);})
-
-            if (!val && !val2)
-            // if (!val)
-              scan(to_URL.href, attribs.href, deep + 1);
-            // else
-            //   console.log("SKIP: " + to_URL.host + "   ===   " + next_URL.host);
+              // if (!val && !val2)
+                // if (!val)
+                // scan(to_URL.href, attribs.href, deep + 1);
+                // else
+                //   console.log("SKIP: " + to_URL.host + "   ===   " + next_URL.host);
+            }
           }
+        } else if(name === "link"){
+          console.log("rel: " + attribs.rel);
+          console.log("type: " + attribs.type);
+          console.log("href: " + attribs.href);
+          let href = attribs.href;
+          if (href && href.startsWith("//"))
+            href = to_URL.protocol + href;
+
+          parse_result.link.push({rel: attribs.rel, type: attribs.type, href: href});
+        } else if(name === "img"){
+          console.log("src: " + attribs.src);
+          let src = attribs.src;
+          if (src.startsWith("//"))
+            src = to_URL.protocol + src;
+
+          //skip domian and subdomain links!
+          if (!isSubValidator(to_URL, toURL(src)))
+            parse_result.img.push(src);
         }
       }
-    }
-  }, {decodeEntities: true});
-
-  parser.write(body);
-  parser.end();
-}
+    }, {decodeEntities: true});
 
 
-function isWWWValidator(URL1, URL2){
-  if (URL1.host == URL2.host)
-    return false;
+    parser.write(body);
+    parser.end();
 
-  let host1; // small
-  let host2; // bigger
-
-  if (URL1.host.length < URL2.host.length){
-    host1 = URL1.host;
-    host2 = URL2.host;
-  } else {
-    host1 = URL2.host;
-    host2 = URL1.host;
-  }
-
-  if (host2.indexOf(host1) == -1)
-    return false;
-
-  if (!host2.startsWith("www"))
-      return false;
-
-  if (host2 == "www."+host1)
-    return true;
-  else
-    return false;
-
+    parse_result.from_URL = to_URL;
+    deep = deep - 1;
+    parse_result.deep = deep;
+    resolve(parse_result);
+  });
 }
 
 function isSubValidator(URL1, URL2){
   // console.log(URL1.host + " vs " + URL2.host)
-  if (URL1.host == URL2.host)
-    return false;
+  if (URL1.hostNoWWW == URL2.hostNoWWW)
+    return true;
 
   let host1; // small
   let host2; // bigger
@@ -294,7 +491,7 @@ function upsetDomain(domain){
 
   // let collection = db.collection('domains');
 
-  collection.insertOne(
+  collection_domain.insertOne(
       {"domain" : domain, "version" : 3},
       function(err, result) {
         console.log("Inserted 1 documents into the collection: " + domain);
@@ -392,10 +589,11 @@ function registerQProcessor(id, getData, processData, autoStart, maxPriority, de
 
 function connectToDB(){
   return new Promise(function(resolve, reject){
-
+    // if (1==1) resolve();
     MongoClient.connect(mongoDB).then(function(_db){
       db = _db;
-      collection = db.collection('domains');
+      collection_domain = db.collection('domain');
+      collection_scan_raw = db.collection('scan_raw');
       console.log("Connected correctly to server");
       resolve(db);
     }).catch(function(err) {
@@ -416,9 +614,10 @@ function main(){
 
   console.log("main()");
 
-  // scan("", "http://1tv.ru", 0);
+  // scan("", "http://www.1tv.ru/", 2);
   // scan("", "http://yahoo.com", 0);
   // scan("", "http://cnn.com", 0);
+  // scan("", "http://yandex.ru", 0);
   // scan("", "http://ya.ru", 0);
   // scan("", "http://google.com", 0);
   // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
@@ -426,11 +625,11 @@ function main(){
   // scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
 
 
-  // if (1===4)
+  if (1===4)
   registerQProcessor("location",
       function (p, ctx){
         return new Promise(function(resolve) {
-          collection.findOne({"version" : p}, {}).then(function (oneDoc) {
+          collection_domain.findOne({"priority" : p, "version" : 0}, {_id:true, domain:true}).then(function (oneDoc) {
 
             console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : Priority : " + p);
             console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : oneDoc.domain));
@@ -449,7 +648,7 @@ function main(){
 
           let updateRec = function(version, data, ipData, _resolve){
             console.log((new Date()).getTime() + " : " + data.domain)
-            collection.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : version} })
+            collection_domain.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : version} })
             .then(function(result) {
               console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
               _resolve();
@@ -459,10 +658,48 @@ function main(){
 
           ipLocation(data.domain)
           .then(function (ipData) {
-            updateRec(4, data, ipData, resolve);
+            updateRec(1, data, ipData, resolve);
           })
           .catch(function (err) {
-            updateRec(5, data, null, resolve);
+            updateRec(2, data, null, resolve);
+          });
+
+
+        });
+      }, true, 3, 50
+  );
+
+  registerQProcessor("deep_scan",
+      function (p, ctx){
+        return new Promise(function(resolve) {
+          collection_scan_raw.findOne({"priority" : p, "version" : 0}).then(function (oneDoc) {
+
+            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : Priority : " + p);
+            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : oneDoc.domain));
+
+            resolve(oneDoc);
+          });
+
+        });
+      }, function(data) {
+        return new Promise(function(resolve){
+
+          let updateRec = function(version, data, ipData, _resolve){
+            console.log((new Date()).getTime() + " : " + data.domain)
+            collection_domain.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : version} })
+            .then(function(result) {
+              console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
+              _resolve();
+            });
+
+          };
+
+          ipLocation(data.domain)
+          .then(function (ipData) {
+            updateRec(1, data, ipData, resolve);
+          })
+          .catch(function (err) {
+            updateRec(2, data, null, resolve);
           });
 
 
