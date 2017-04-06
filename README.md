@@ -33,7 +33,7 @@ How to run
 Release notes
 =======================================
 
-**2.5.4**
+**2.5.5**
 * move logic to database
 * two active QProcessor queue
 * Speed Scan: 1960/7733 (uniq URL/sec)

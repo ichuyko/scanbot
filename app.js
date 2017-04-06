@@ -13,14 +13,12 @@ var db;
 var collection_domain;
 var collection_scan_raw;
 
-//load on app start from mongo!
-// {host: facebook.com}
-var scanned_hosts = {};
-
 let cnt = 0;
 let cntScan = 0;
 let domain = {};
 let statObj = {};
+
+let qProcess = {};
 
 let netTimeAccess = 0;
 let netTimeAccessStart;
@@ -60,80 +58,6 @@ function toURL(url) {
     URL_obj.isPathname = (URL_obj.pathname.length > 0 &&
     URL_obj.pathname !== "/");
     return URL_obj;
-}
-
-function getDomain(domain){
-  return new Promise(function(resolve, reject) {
-    collection_domain.findOne({"domain" : domain}, {_id:true, domain:true}).then(function (oneDoc) {
-      resolve(oneDoc);
-    }).catch(function(error) {
-      console.log((new Date()).getTime() + " : ERROR");
-      console.log(error);
-      reject(error);
-    })
-  });
-}
-
-function insertNewDomain(new_URL){
-  return new Promise(function(resolve, reject) {
-    let subDomain = new_URL.hostname.replace('.', ',');
-    let newDomainRec = {"domain" : new_URL.domain, count:1};
-    newDomainRec[subDomain] =  {count : 1};
-
-    collection_domain.insertOne(newDomainRec).then(function (oneDoc) {
-      resolve(newDomainRec);
-    }).catch(function(error) {
-      reject(error);
-    })
-  });
-}
-
-function getSubDomainsObj(domain, _URL){
-  let path = "";
-  let curr_path;
-
-  if (_URL.isSecondLevelDomain) {
-    curr_path = _URL.hostname;//.replace('.', ',');
-    domain["subdomain"] = {domain: curr_path, count: "+1"};
-    // path.push(curr_path);
-  } else {
-    let doms = _URL.hostname.split('.');
-    let len = doms.length;
-    let prev = doms[len - 2] + "." + doms[len - 1];
-    let obj = {domain: prev, count: "+1"};
-    let curr_obj;
-    path = path + "subdomain.";
-
-    curr_obj = domain;
-    for (let i = len - 3; i >= 0; i--) {
-      curr_path = doms[i] + "." + prev
-      curr_obj["subdomain"] = {domain: curr_path, count: "+1"};
-      prev = curr_path;
-      path = path + "subdomain.";
-      curr_obj = curr_obj["subdomain"];
-    }
-  }
-
-  let up = undefined;
-
-  if (_URL.isPathname) {
-    let find = {};
-    find[path + "domain"] = curr_path;
-    let update = {};
-    update[path + "paths"] = {$addToSet : {path: _URL.pathname}};
-
-    // {"subdomain.subdomain.paths.path": "/contact"} , {$inc: {"subdomain.subdomain.paths.$.count": 1}}
-    let incFind = {};
-    incFind[path + "paths.path"] = {path: _URL.pathname};
-    let incUpdate = {};
-    let v = {};
-    v[path + "paths.$.count"] = 1;
-    incUpdate[path + "paths.path"] = {$inc: v};
-
-    up = {find: find, update: update, incFind: incFind, incUpdate: incUpdate};
-  }
-
-  return up;
 }
 
 function scan(from_url, to_url, deep) {
@@ -219,7 +143,6 @@ function scan(from_url, to_url, deep) {
 
 function getParseResponse(version, message) {
   let resp = {};
-  let timestamp = (new Date()).getTime();
   resp.version = version;
   resp.message = message;
   return resp;
@@ -396,27 +319,6 @@ function saveStat(topic, d1, d2, info){
   }
 }
 
-function upsetDomain(domain){
-
-  // let collection = db.collection('domains');
-
-  collection_domain.insertOne(
-      {"domain" : domain, "version" : 3},
-      function(err, result) {
-        console.log("Inserted 1 documents into the collection: " + domain);
-
-        // assert.equal(err, null);
-        // assert.equal(3, result.result.n);
-        // assert.equal(3, result.ops.length);
-        // callback(result);
-        // console.log("result:");
-        // console.log(result);
-
-        // process.exit(0);
-      });
-
-}
-
 function onExit(args){
   console.log("================ " + args + " ===================");
   let uptime = process.uptime();
@@ -443,7 +345,6 @@ process.on('uncaughtException', (err) => {
   console.log(err);
 });
 
-let qProcess = {};
 
 function registerQProcessor(id, getData, processData, autoStart, maxPriority, delay){
   let proc = qProcess[id];
@@ -497,8 +398,6 @@ function registerQProcessor(id, getData, processData, autoStart, maxPriority, de
     qProcess[id].nextCall(proc);
 }
 
-
-
 function connectToDB(){
   return new Promise(function(resolve, reject){
     // if (1==1) resolve();
@@ -518,9 +417,7 @@ function connectToDB(){
   });
 }
 
-
 connectToDB().then(main);
-
 
 function main(){
 
@@ -538,7 +435,7 @@ function main(){
   scan("", "https://www.redflagnews.com/top-100-conservative/", 3);
 
 
-  if (1===4)
+  // if (1===4)
   registerQProcessor("location",
       function (p, ctx){
         return new Promise(function(resolve) {
