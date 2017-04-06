@@ -136,13 +136,9 @@ function getSubDomainsObj(domain, _URL){
 function scan(from_url, to_url, deep) {
   return new Promise(function(resolve, reject) {
 
-    const isURLtoFile = callStat("isURLTOFILEValidator", to_url, function() {
-      return isURLTOFILEValidator(to_url);
-    });
-
-    if (isURLtoFile) {
-      console.log("SKIP URL by content type Validator! Looks like it's URL to file: " + to_url);
-      resolve();
+    if (deep === 0){
+      reject();
+      return;
     }
 
     const from_URL = toURL(from_url);
@@ -150,76 +146,71 @@ function scan(from_url, to_url, deep) {
       return toURL(to_url);
     })
 
-    //SKIP DOUBLE SCAN of ?
-    // let dom = domain[to_URL.scan_id];
-    // if (!dom){
-    //   let nd = {};
-    //   nd.cont = 1;
-    //   nd["from_" + nd.cont] = from_url;
-    //   domain[to_URL.scan_id] = nd;
-    // } else {
-    //   dom.cont = dom.cont+1;
-    //   dom["from_" + dom.cont] = from_url;
-    //   console.log("[" + cnt + ", " + deep + "] " + "SKIP DOUBLE SCAN of " + to_URL.host + " FROM " + from_url);
-    //   return;
-    // }
-
-    console.log("[" + cnt + ", " + deep + "] " + from_url + " => " + to_url + "  ] =============");
-    // console.log("Send request: " + new Date());
-
-    if (deep == 0) {
-      //never happend. control from DB
-      console.log("[" + cnt + ", " + deep + "] " + "stop by deep : " + to_url)
-      return;
-    }
-
-    // console.log("[" + cnt + ", " + deep + "] " + "Deep[" + deep + "]: " + "scan FROM " + from_url + " TO " + to_url)
-
-    cntScan = cntScan + 1;
-    console.log("cntScan = " + cntScan);
-    let ops = {timeout:6000};//, agent: "Mozilla/5.0 (iPad; CPU OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1"};
-    got(to_url, ops)
-    .then(response => {
-      // console.log("Response: " + new Date());
-      //
-      // console.log("response.headers.server: " + response.headers.server);
-      // console.log("Response: " + response.body);
-
-      // parseBody(response.body);
-      console.log("[" + cnt + ", " + deep + "] " + "scan RESPONSE FROM " + from_url + " TO " + to_url)
-
-      let contentType = response.headers["content-type"];
-      if (!contentType.includes("text/html")){
-        console.log("SKIP content-type : " + contentType + "   FROM   " + to_url);
-        resolve();
+    collection_scan_raw.findOne({"to_url.scan_id" : to_URL.scan_id, version : {$ne : 0}}).then(function (oneRec) {
+      if (oneRec) {
+        console.log("Already scanned! Let's mark and skip: " + to_url);
+        resolve(getParseResponse(3, "Duplicate of " + to_url));//duplicate. already scanned
+        return;
       }
-      parseBody(response.body, from_URL, to_URL, deep).then(function(parse_result) {
 
-        if (parse_result && parse_result.a && parse_result.a.length > 0){
-          let newURLs = [];
-          parse_result.a.forEach(function(a_href) {
-            let timestamp = (new Date()).getTime();
-            newURLs.push({timestamp: timestamp, priority: 3, version: 0, url: a_href, deep: parse_result.deep, from_url: parse_result.from_URL});
-          });
+      cntScan = cntScan + 1;
+      console.log("cntScan = " + cntScan);
+      console.log("Loading... " + to_url);
+      // let ops = {timeout:6000};
+      got(to_url)
+      .then(response => {
+        console.log("scan RESPONSE FROM " + from_url + " TO " + to_url)
 
-          collection_scan_raw.insertMany(newURLs).then(function(r) {
-            console.log(r.insertedCount);
-
-            resolve();
-          });
-        } else {
-          resolve();
+        let contentType = response.headers["content-type"];
+        if (!contentType.includes("text/html")){
+          console.log("SKIP content-type : " + contentType + "   FROM   " + to_url);
+          resolve(getParseResponse(2, "Wrong content type : " + contentType));
+          return;
         }
 
+        parseBody(response.body, from_URL, to_URL, deep).then(function(parse_result) {
 
-      }).catch(function(error) {
-        reject(error);
+          if (parse_result && parse_result.a && parse_result.a.length > 0){
+            let newURLs = [];
+            parse_result.a.forEach(function(a_href) {
+              let timestamp = (new Date()).getTime();
+              let a_href_URL = toURL(a_href);
+              newURLs.push({timestamp: timestamp, priority: 3, version: 0, to_url: a_href_URL, deep: parse_result.deep, from_url: parse_result.from_URL});
+            });
+
+            collection_scan_raw.insertMany(newURLs).then(function(r) {
+              resolve(getParseResponse(1, "insertedCount : " + r.insertedCount));
+            });
+          } else {
+            resolve(getParseResponse(1, "Nothing to insert"));
+          }
+
+
+        }).catch(function(error) {
+          // reject(error);
+          console.log(error);
+          resolve(getParseResponse(2, error.message));
+        });
+      })
+      .catch(error => {
+        // reject(error);
+        console.log(error);
+        resolve(getParseResponse(2, error.message));
       });
-    })
-    .catch(error => {
-      reject(error);
+
     });
+
+
+
   });
+}
+
+function getParseResponse(version, message) {
+  let resp = {};
+  let timestamp = (new Date()).getTime();
+  resp.version = version;
+  resp.message = message;
+  return resp;
 }
 
 function parseBody(body, from_URL, to_URL, deep){
@@ -228,58 +219,30 @@ function parseBody(body, from_URL, to_URL, deep){
     let parse_result = {a:[], script:[], css:[], img:[], link: []};
     let parser = new htmlparser.Parser({
       onopentag: function(name, attribs){
-
+        let url;
         if(name === "script"){
-          console.log("type: " + attribs.type);
-          console.log("src: " + attribs.src);
-          let src = attribs.src;
-          if (src && src.startsWith("//"))
-            src = to_URL.protocol + src;
-
-          if (src)
-            parse_result.script.push({type: attribs.type, src: src});
+          url = fixURL(attribs && attribs.src ? attribs.src : "", to_URL.protocol);
+          if (url)
+            parse_result.script.push({type: attribs.type, src: url});
         } else if(name === "a"){
-          // console.log("href: " + attribs.href);
-          if (attribs && attribs.href && attribs.href.length > 2 ) {
-            // //mail.ru ???? //attribs.href.startsWith("http")
-            let href = attribs.href;
-            if (href.startsWith("//"))
-              href = to_URL.protocol + href;
-
-            let next_URL = toURL(href);
-            if (to_URL.scan_id != next_URL.scan_id && href.length > 4 && href.startsWith("http")){
-
-              // let val  = callStat("isWWWValidator", to_URL.host + " vs " + next_URL.host, function (){return isWWWValidator(to_URL, next_URL);})
+          url = fixURL(attribs && attribs.href ? attribs.href : "", to_URL.protocol);
+          // if (attribs && attribs.href && attribs.href.length > 2 ) {
+          if (url){
+            let next_URL = toURL(url);
+            if (to_URL.scan_id != next_URL.scan_id){
               if (!isSubValidator(to_URL, next_URL))
-                if (!isURLTOFILEValidator(href))
-                  parse_result.a.push(href);
-
-
-
-              // if (!val && !val2)
-                // if (!val)
-                // scan(to_URL.href, attribs.href, deep + 1);
-                // else
-                //   console.log("SKIP: " + to_URL.host + "   ===   " + next_URL.host);
+                if (!isURLTOFILEValidator(url))
+                  parse_result.a.push(url);
             }
           }
         } else if(name === "link"){
-          console.log("rel: " + attribs.rel);
-          console.log("type: " + attribs.type);
-          console.log("href: " + attribs.href);
-          let href = attribs.href;
-          if (href && href.startsWith("//"))
-            href = to_URL.protocol + href;
-
-          parse_result.link.push({rel: attribs.rel, type: attribs.type, href: href});
+          url = fixURL(attribs && attribs.href ? attribs.href : "", to_URL.protocol);
+          if (url)
+            parse_result.link.push({rel: attribs.rel, type: attribs.type, href: url});
         } else if(name === "img"){
-          console.log("src: " + attribs.src);
-          let src = attribs.src;
-          if (src && src.startsWith("//")){
-            src = to_URL.protocol + src;
-            if (!isSubValidator(to_URL, toURL(src)))
-              parse_result.img.push(src);
-          }
+          url = fixURL(attribs && attribs.src ? attribs.src : "", to_URL.protocol);
+          if (url && !isSubValidator(to_URL, toURL(url)))
+            parse_result.img.push(url);
         }
       }
     }, {decodeEntities: true});
@@ -293,6 +256,31 @@ function parseBody(body, from_URL, to_URL, deep){
     parse_result.deep = deep;
     resolve(parse_result);
   });
+}
+
+function fixURL(url, protocol) {
+  if (!url)
+    return "";
+
+  // url = url.trim();
+  if (url.indexOf('\t') != -1)
+    console.log("TRIM? : " + url);
+  if (url.indexOf('\n') != -1)
+    console.log("TRIM?? : " + url);
+
+    url = url.replace(/\s/g, '')
+
+    if (url.length < 2)
+    return "";
+
+  if (url.startsWith("//"))
+    return protocol + url;
+  else
+    if (url.length > 4 && url.startsWith("http")) // skip file:// ftp:// mailto:   etc
+      return url;
+  else
+    return "";
+
 }
 
 function isSubValidator(URL1, URL2){
@@ -523,15 +511,16 @@ function main(){
 
   console.log("main()");
 
+  // scan("", "https://itunes.apple.com/ru/app/id507760450?mt=8&uo=4&at=11l9Wx&ct=autoru", 1);
   // scan("", "http://www.1tv.ru/", 2);
-  // scan("", "http://yahoo.com", 0);
-  // scan("", "http://cnn.com", 0);
-  // scan("", "http://yandex.ru", 0);
-  // scan("", "http://ya.ru", 0);
-  // scan("", "http://google.com", 0);
-  // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 0);
-  // scan("", "http://www.alexa.com/topsites", 0);
-  // scan("", "https://www.redflagnews.com/top-100-conservative/", 0);
+  // scan("", "http://yahoo.com", 3);
+  // scan("", "http://cnn.com", 3);
+  // scan("", "http://yandex.ru", 3);
+  // scan("", "http://ya.ru", 3);
+  // scan("", "http://google.com", 3);
+  // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 3);
+  // scan("", "http://www.alexa.com/topsites", 3);
+  // scan("", "https://www.redflagnews.com/top-100-conservative/", 3);
 
 
   if (1===4)
@@ -541,7 +530,7 @@ function main(){
           collection_domain.findOne({"priority" : p, "version" : 0}, {_id:true, domain:true}).then(function (oneDoc) {
 
             console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : Priority : " + p);
-            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : oneDoc.domain));
+            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : "_id=" + oneDoc._id.toString()));
             // console.log(oneDoc);
             // console.dir(docs);
             // if (typeof _dataCallback !== 'function') {
@@ -578,13 +567,14 @@ function main(){
       }, true, 3, 50
   );
 
+  // if (11==3)
   registerQProcessor("deep_scan",
       function (p, ctx){
         return new Promise(function(resolve) {
           collection_scan_raw.findOne({$and : [{"priority" : p, "version" : 0}, {deep : {$ne : 0}}]}).then(function (oneDoc) {
 
             console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : Priority : " + p);
-            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : oneDoc.domain));
+            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : "_id=" + oneDoc._id.toString()));
 
             resolve(oneDoc);
           });
@@ -592,13 +582,13 @@ function main(){
         });
       }, function(data) {
         return new Promise(function(resolve){
-          scan(data.from_url.href, data.url, data.deep).then(function(res) {
-            collection_scan_raw.updateOne({ _id: new ObjectID(data._id.toString()) }, {$inc: {version: 1, deep: -1}, })
+          scan(data.from_url.href, data.to_url.href, data.deep).then(function(parse_response) {
+            collection_scan_raw.updateOne({ _id: new ObjectID(data._id.toString()) }, {$inc: {deep: -1}, $set : {version: parse_response.version, message:parse_response.message}, })
             .then(function(result) {
-              console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
+              console.log((new Date()).getTime() + " : " + "Updated the document from queue. Next...");
               resolve();
             });
-          })
+          });
         });
       }, true, 3, 50
   );
