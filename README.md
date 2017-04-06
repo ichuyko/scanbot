@@ -33,6 +33,13 @@ How to run
 Release notes
 =======================================
 
+**2.5.4**
+* move logic to database
+* two active QProcessor queue
+* Speed Scan: 1960/7733 (uniq URL/sec)
+* NetTimeAccess: 5147/7733 67 %
+
+
 **v1.4.3**
 * Handle empty queue
 * Add queue monitor for new items

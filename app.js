@@ -22,7 +22,8 @@ let cntScan = 0;
 let domain = {};
 let statObj = {};
 
-let i = 1;
+let netTimeAccess = 0;
+let netTimeAccessStart;
 
 
 function toURL(url) {
@@ -158,12 +159,14 @@ function scan(from_url, to_url, deep) {
       cntScan = cntScan + 1;
       console.log("cntScan = " + cntScan);
       console.log((new Date()).getTime() + " : " +"Loading... " + to_url);
+      netTimeAccessStart = (new Date()).getTime();
       let ops = {};
       ops.timeout = 35 * 1000;
       // ops.headers = {"Timeout": "20000"};
       got(to_url, ops)
       // got("http://aawsat.com/english/default.asp", ops)
       .then(response => {
+        netTimeAccess = netTimeAccess + ((new Date()).getTime() - netTimeAccessStart);
         console.log((new Date()).getTime() + " : " +"Scan RESPONSE FROM " + from_url + " TO " + to_url)
 
         let contentType = response.headers["content-type"];
@@ -193,6 +196,7 @@ function scan(from_url, to_url, deep) {
 
         }).catch(function(error) {
           // reject(error);
+          netTimeAccess = netTimeAccess + ((new Date()).getTime() - netTimeAccessStart);
           console.log((new Date()).getTime() + " : ERROR");
           console.log(error);
           resolve(getParseResponse(2, error.message));
@@ -200,6 +204,7 @@ function scan(from_url, to_url, deep) {
       })
       .catch(error => {
         // reject(error);
+        netTimeAccess = netTimeAccess + ((new Date()).getTime() - netTimeAccessStart);
         console.log((new Date()).getTime() + " : ERROR");
         console.log(error);
         resolve(getParseResponse(2, error.message));
@@ -414,7 +419,10 @@ function upsetDomain(domain){
 
 function onExit(args){
   console.log("================ " + args + " ===================");
-  console.log("Uptime: " + process.uptime());
+  let uptime = process.uptime();
+  let nettime = netTimeAccess/1000;
+  console.log("Uptime: " + uptime);
+  console.log("netTimeAccess: " + nettime   + "    " + (((nettime * 100) / uptime)) + " %");
   console.log("URLs: " + cntScan + "/" + cnt)
   console.log("================ Statistic ===================");
   // console.log(domain);
@@ -458,11 +466,11 @@ function registerQProcessor(id, getData, processData, autoStart, maxPriority, de
             //check for no data for any prioroty and extend delay! convert it to listener;
             //exit on no data for max p
             if (ctx.priority == ctx.maxPriority) {
-              console.log("Queue '" + ctx.id + "' is empty! Starts 5 sec monitor...");
+              console.log("Queue '" + ctx.id + "' is empty! Starts 10 sec monitor...");
               ctx.priority = 0;
               setTimeout(function() {
                 ctx.nextCall(ctx);
-              }, 5000);
+              }, 10000);
             } else {
               ctx.priority = ctx.priority + 1;
               ctx.nextCall(ctx);
@@ -519,22 +527,22 @@ function main(){
   console.log("main()");
 
   // scan("", "https://itunes.apple.com/ru/app/id507760450?mt=8&uo=4&at=11l9Wx&ct=autoru", 1);
-  // scan("", "http://www.1tv.ru/", 2);
-  // scan("", "http://yahoo.com", 3);
-  // scan("", "http://cnn.com", 3);
-  // scan("", "http://yandex.ru", 3);
-  // scan("", "http://ya.ru", 3);
-  // scan("", "http://google.com", 3);
-  // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 3);
-  // scan("", "http://www.alexa.com/topsites", 3);
-  // scan("", "https://www.redflagnews.com/top-100-conservative/", 3);
+  scan("", "http://www.1tv.ru/", 2);
+  scan("", "http://yahoo.com", 3);
+  scan("", "http://cnn.com", 3);
+  scan("", "http://yandex.ru", 3);
+  scan("", "http://ya.ru", 3);
+  scan("", "http://google.com", 3);
+  scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 3);
+  scan("", "http://www.alexa.com/topsites", 3);
+  scan("", "https://www.redflagnews.com/top-100-conservative/", 3);
 
 
-  if (1===4)
+  // if (1===4)
   registerQProcessor("location",
       function (p, ctx){
         return new Promise(function(resolve) {
-          collection_domain.findOne({"priority" : p, "version" : 1}, {_id:true, "to_url.hostname":true}).then(function (oneDoc) {
+          collection_scan_raw.findOne({"priority" : p, "version" : 1}, {_id:true, "to_url.hostname":true}).then(function (oneDoc) {
             resolve(oneDoc);
           });
 
@@ -543,21 +551,21 @@ function main(){
         return new Promise(function(resolve){
 
           let updateRec = function(version, data, ipData, _resolve){
-            console.log((new Date()).getTime() + " : " + data.domain)
-            collection_domain.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : version} })
+            let timestamp = (new Date()).getTime();
+            collection_scan_raw.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { to_url_location : ipData , version : version, timestamp : timestamp} })
             .then(function(result) {
-              console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
               _resolve();
             });
 
           };
 
-          ipLocation(data.domain)
+          console.log((new Date()).getTime() + " : " + " Detect Location for " + data.to_url.hostname);
+          ipLocation(data.to_url.hostname)
           .then(function (ipData) {
-            updateRec(1, data, ipData, resolve);
+            updateRec(4, data, ipData, resolve);
           })
           .catch(function (err) {
-            updateRec(2, data, null, resolve);
+            updateRec(5, data, null, resolve);
           });
 
 
@@ -581,7 +589,7 @@ function main(){
       }, function(data) {
         return new Promise(function(resolve){
           scan(data.from_url.href, data.to_url.href, data.deep).then(function(parse_response) {
-            collection_scan_raw.updateOne({ _id: new ObjectID(data._id.toString()) }, {$inc: {deep: -1}, $set : {version: parse_response.version, message:parse_response.message}, })
+            collection_scan_raw.updateOne({ _id: new ObjectID(data._id.toString()) }, {$inc: {deep: -1}, $set : {version: parse_response.version, message:parse_response.message, timestamp : timestamp}, })
             .then(function(result) {
               console.log((new Date()).getTime() + " : " + "Updated the document from queue. Next...");
               resolve();
@@ -590,6 +598,4 @@ function main(){
         });
       }, true, 3, 50
   );
-
-
 }
