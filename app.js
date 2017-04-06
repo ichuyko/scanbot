@@ -136,18 +136,13 @@ function getSubDomainsObj(domain, _URL){
 function scan(from_url, to_url, deep) {
   return new Promise(function(resolve, reject) {
 
-
-    cnt = cnt + 1;
-
     const isURLtoFile = callStat("isURLTOFILEValidator", to_url, function() {
       return isURLTOFILEValidator(to_url);
-    })
+    });
 
     if (isURLtoFile) {
-      console.log(
-          "SKIP URL by content type Validator! Looks like it's URL to file: " +
-          to_url);
-      return;
+      console.log("SKIP URL by content type Validator! Looks like it's URL to file: " + to_url);
+      resolve();
     }
 
     const from_URL = toURL(from_url);
@@ -155,94 +150,25 @@ function scan(from_url, to_url, deep) {
       return toURL(to_url);
     })
 
-    //insert to scan_raw mongo
-    // let timestamp = (new Date()).getTime();
-    // collection_scan_raw.insertOne({
-    //   type: 1,
-    //   date: timestamp,
-    //   version: 0,
-    //   priority: 3,
-    //   from: from_URL,
-    //   from_scan_id: from_URL.scan_id,
-    //   to: to_URL,
-    //   to_scan_id: to_URL.scan_id,
-    //   deep: maxDeep - deep
-    // }).then(function(result) {
-    //   console.log("Inserted to scan_raw");
-    // }).catch(function(error) {
-    //   console.log("ERROR: Insert to scan_raw:");
-    //   console.log(error);
-    // });
-
-
-    //
-    // // let from_URL2 = toURL("http://facebook.com/about/ivandj");
-    // let from_URL2 = toURL("http://info.home.facebook.com/ivandj");
-    // // let to_URL2 = toURL("http://ok.mail.ru/profile/ivandj/");
-    // let from_domain = {}, to_domain = {};
-    // let from_incPath, to_incPath;
-    //
-    // from_incPath = getSubDomainsObj(from_domain, from_URL2);
-    // // to_incPath = getSubDomainsObj(to_domain, to_URL2);
-    //
-    // let from_FROM = {};
-    // from_FROM.from = from_incPath;
-    //
-    //
-    // // all pathname (scan_id)
-    // if (from_incPath) {
-    //   collection_domain.updateOne(from_incPath.find, from_incPath.update).then(function(up_data) {
-    //     console.log(up_data);
-    //
-    //     // db.domain.update({"subdomain.subdomain.paths.path": "/contact"} , {$inc: {"subdomain.subdomain.paths.$.count": 1}})
-    //     collection_domain.updateOne(from_incPath.findInc, from_incPath.updateInc).then(function(inc_data) {
-    //       console.log(inc_data);
-    //
-    //
-    //     });
-    //
-    //   });
+    //SKIP DOUBLE SCAN of ?
+    // let dom = domain[to_URL.scan_id];
+    // if (!dom){
+    //   let nd = {};
+    //   nd.cont = 1;
+    //   nd["from_" + nd.cont] = from_url;
+    //   domain[to_URL.scan_id] = nd;
+    // } else {
+    //   dom.cont = dom.cont+1;
+    //   dom["from_" + dom.cont] = from_url;
+    //   console.log("[" + cnt + ", " + deep + "] " + "SKIP DOUBLE SCAN of " + to_URL.host + " FROM " + from_url);
+    //   return;
     // }
-
-    // return;
-
-    // collection_domain.findOneAndUpdate({dom:123}, {dom:123, count:1}).then(function(result) {
-    // // collection_domain.findOneAndUpdate({dom:123}, {$inc : {count: 1}}).then(function(result) {
-    //   console.log("Inserted to scan_raw");
-    //
-    // }).catch(function(error) {
-    //   console.log("ERROR: Insert to scan_raw:");
-    //   console.log(error);
-    // });
-
-
-
-
-
-
-
-    let dom = domain[to_URL.scan_id];
-    if (!dom){
-      let nd = {};
-      nd.cont = 1;
-      nd["from_" + nd.cont] = from_url;
-      domain[to_URL.scan_id] = nd;
-
-      // upsetDomain(to_URL.hostname);
-
-    } else {
-      dom.cont = dom.cont+1;
-      dom["from_" + dom.cont] = from_url;
-      console.log("[" + cnt + ", " + deep + "] " + "SKIP DOUBLE SCAN of " + to_URL.host + " FROM " + from_url);
-      return;
-    }
-
-
 
     console.log("[" + cnt + ", " + deep + "] " + from_url + " => " + to_url + "  ] =============");
     // console.log("Send request: " + new Date());
 
     if (deep == 0) {
+      //never happend. control from DB
       console.log("[" + cnt + ", " + deep + "] " + "stop by deep : " + to_url)
       return;
     }
@@ -265,7 +191,7 @@ function scan(from_url, to_url, deep) {
       let contentType = response.headers["content-type"];
       if (!contentType.includes("text/html")){
         console.log("SKIP content-type : " + contentType + "   FROM   " + to_url);
-        return;
+        resolve();
       }
       parseBody(response.body, from_URL, to_URL, deep).then(function(parse_result) {
 
@@ -276,32 +202,23 @@ function scan(from_url, to_url, deep) {
             newURLs.push({timestamp: timestamp, priority: 3, version: 0, url: a_href, deep: parse_result.deep, from_url: parse_result.from_URL});
           });
 
-
           collection_scan_raw.insertMany(newURLs).then(function(r) {
             console.log(r.insertedCount);
+
+            resolve();
           });
+        } else {
+          resolve();
         }
 
 
+      }).catch(function(error) {
+        reject(error);
       });
     })
     .catch(error => {
-      console.log("GOT Error: " + error);
-
+      reject(error);
     });
-
-
-    // var options = {};
-    // curl.get(to_url, options, function(err, response, body) {
-    //   console.log("Response: " + new Date());
-    //
-    //   console.log("response.headers.server: " + response.headers.server);
-    //   console.log("Response: " + body);
-    //   parseBody(body);
-    // });
-
-
-
   });
 }
 
@@ -330,7 +247,7 @@ function parseBody(body, from_URL, to_URL, deep){
               href = to_URL.protocol + href;
 
             let next_URL = toURL(href);
-            if (to_URL.scan_id != next_URL.scan_id && href.startsWith("http")){
+            if (to_URL.scan_id != next_URL.scan_id && href.length > 4 && href.startsWith("http")){
 
               // let val  = callStat("isWWWValidator", to_URL.host + " vs " + next_URL.host, function (){return isWWWValidator(to_URL, next_URL);})
               if (!isSubValidator(to_URL, next_URL))
@@ -358,12 +275,11 @@ function parseBody(body, from_URL, to_URL, deep){
         } else if(name === "img"){
           console.log("src: " + attribs.src);
           let src = attribs.src;
-          if (src.startsWith("//"))
+          if (src && src.startsWith("//")){
             src = to_URL.protocol + src;
-
-          //skip domian and subdomain links!
-          if (!isSubValidator(to_URL, toURL(src)))
-            parse_result.img.push(src);
+            if (!isSubValidator(to_URL, toURL(src)))
+              parse_result.img.push(src);
+          }
         }
       }
     }, {decodeEntities: true});
@@ -388,19 +304,12 @@ function isSubValidator(URL1, URL2){
   let host2; // bigger
 
   if (URL1.host.length < URL2.host.length){
-    host1 = URL1.host;
-    host2 = URL2.host;
+    host1 = URL1.hostNoWWW;
+    host2 = URL2.hostNoWWW;
   } else {
-    host1 = URL2.host;
-    host2 = URL1.host;
+    host1 = URL2.hostNoWWW;
+    host2 = URL1.hostNoWWW;
   }
-
-  if (host1.startsWith("www."))
-    host1 = host1.replace("www.", "");
-
-  if (host2.startsWith("www."))
-    host2 = host2.replace("www.", "");
-
 
   if (host2.indexOf(host1) != -1)
     return true;
@@ -672,7 +581,7 @@ function main(){
   registerQProcessor("deep_scan",
       function (p, ctx){
         return new Promise(function(resolve) {
-          collection_scan_raw.findOne({"priority" : p, "version" : 0}).then(function (oneDoc) {
+          collection_scan_raw.findOne({$and : [{"priority" : p, "version" : 0}, {deep : {$ne : 0}}]}).then(function (oneDoc) {
 
             console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : Priority : " + p);
             console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : oneDoc.domain));
@@ -683,26 +592,13 @@ function main(){
         });
       }, function(data) {
         return new Promise(function(resolve){
-
-          let updateRec = function(version, data, ipData, _resolve){
-            console.log((new Date()).getTime() + " : " + data.domain)
-            collection_domain.updateOne({ _id: new ObjectID(data._id.toString()) }, { $set: { location : ipData , version : version} })
+          scan(data.from_url.href, data.url, data.deep).then(function(res) {
+            collection_scan_raw.updateOne({ _id: new ObjectID(data._id.toString()) }, {$inc: {version: 1, deep: -1}, })
             .then(function(result) {
               console.log((new Date()).getTime() + " : " + "Updated the document. Next...");
-              _resolve();
+              resolve();
             });
-
-          };
-
-          ipLocation(data.domain)
-          .then(function (ipData) {
-            updateRec(1, data, ipData, resolve);
           })
-          .catch(function (err) {
-            updateRec(2, data, null, resolve);
-          });
-
-
         });
       }, true, 3, 50
   );
