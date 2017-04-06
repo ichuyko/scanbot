@@ -66,6 +66,8 @@ function getDomain(domain){
     collection_domain.findOne({"domain" : domain}, {_id:true, domain:true}).then(function (oneDoc) {
       resolve(oneDoc);
     }).catch(function(error) {
+      console.log((new Date()).getTime() + " : ERROR");
+      console.log(error);
       reject(error);
     })
   });
@@ -148,18 +150,21 @@ function scan(from_url, to_url, deep) {
 
     collection_scan_raw.findOne({"to_url.scan_id" : to_URL.scan_id, version : {$ne : 0}}).then(function (oneRec) {
       if (oneRec) {
-        console.log("Already scanned! Let's mark and skip: " + to_url);
+        console.log((new Date()).getTime() + " : " + " Already scanned! " + to_url);
         resolve(getParseResponse(3, "Duplicate of " + to_url));//duplicate. already scanned
         return;
       }
 
       cntScan = cntScan + 1;
       console.log("cntScan = " + cntScan);
-      console.log("Loading... " + to_url);
-      // let ops = {timeout:6000};
-      got(to_url)
+      console.log((new Date()).getTime() + " : " +"Loading... " + to_url);
+      let ops = {};
+      ops.timeout = 35 * 1000;
+      // ops.headers = {"Timeout": "20000"};
+      got(to_url, ops)
+      // got("http://aawsat.com/english/default.asp", ops)
       .then(response => {
-        console.log("scan RESPONSE FROM " + from_url + " TO " + to_url)
+        console.log((new Date()).getTime() + " : " +"Scan RESPONSE FROM " + from_url + " TO " + to_url)
 
         let contentType = response.headers["content-type"];
         if (!contentType.includes("text/html")){
@@ -188,12 +193,14 @@ function scan(from_url, to_url, deep) {
 
         }).catch(function(error) {
           // reject(error);
+          console.log((new Date()).getTime() + " : ERROR");
           console.log(error);
           resolve(getParseResponse(2, error.message));
         });
       })
       .catch(error => {
         // reject(error);
+        console.log((new Date()).getTime() + " : ERROR");
         console.log(error);
         resolve(getParseResponse(2, error.message));
       });
@@ -263,10 +270,10 @@ function fixURL(url, protocol) {
     return "";
 
   // url = url.trim();
-  if (url.indexOf('\t') != -1)
-    console.log("TRIM? : " + url);
-  if (url.indexOf('\n') != -1)
-    console.log("TRIM?? : " + url);
+  // if (url.indexOf('\t') != -1)
+  //   console.log("TRIM? : " + url);
+  // if (url.indexOf('\n') != -1)
+  //   console.log("TRIM?? : " + url);
 
     url = url.replace(/\s/g, '')
 
@@ -527,16 +534,7 @@ function main(){
   registerQProcessor("location",
       function (p, ctx){
         return new Promise(function(resolve) {
-          collection_domain.findOne({"priority" : p, "version" : 0}, {_id:true, domain:true}).then(function (oneDoc) {
-
-            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : Priority : " + p);
-            console.log((new Date()).getTime() + " : " + "Queue '" + ctx.id + "' : " + ((!oneDoc) ? "No items " : "_id=" + oneDoc._id.toString()));
-            // console.log(oneDoc);
-            // console.dir(docs);
-            // if (typeof _dataCallback !== 'function') {
-            //   console.log("WTF2 ?!");
-            // }
-
+          collection_domain.findOne({"priority" : p, "version" : 1}, {_id:true, "to_url.hostname":true}).then(function (oneDoc) {
             resolve(oneDoc);
           });
 
