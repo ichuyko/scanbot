@@ -71,12 +71,12 @@ function scan(from_url, to_url, deep) {
     const from_URL = toURL(from_url);
     const to_URL = callStat("to_URL", to_url, function() {
       return toURL(to_url);
-    })
+    });
 
     collection_scan_raw.findOne({"to_url.scan_id" : to_URL.scan_id, version : {$ne : 0}}).then(function (oneRec) {
       if (oneRec) {
         console.log((new Date()).getTime() + " : " + " Already scanned! " + to_url);
-        resolve(getParseResponse(3, "Duplicate of " + to_url));//duplicate. already scanned
+        resolve(getParseResponse(3, "Duplicate of: " + JSON.stringify(oneRec)));//duplicate. already scanned
         return;
       }
 
@@ -136,14 +136,19 @@ function scan(from_url, to_url, deep) {
 
     });
 
-
-
   });
 }
 
 function getParseResponse(version, message) {
   let resp = {};
   resp.version = version;
+  // 0 - not scanned
+  // 1 - scanned
+  // 2 - scan error
+  // 3 - duplicate
+  // 4 - Location detected
+  // 5 - Location detection error
+
   resp.message = message;
   return resp;
 }
@@ -424,18 +429,18 @@ function main(){
   console.log("main()");
 
   // scan("", "https://itunes.apple.com/ru/app/id507760450?mt=8&uo=4&at=11l9Wx&ct=autoru", 1);
-  scan("", "http://www.1tv.ru/", 2);
-  scan("", "http://yahoo.com", 3);
-  scan("", "http://cnn.com", 3);
-  scan("", "http://yandex.ru", 3);
-  scan("", "http://ya.ru", 3);
-  scan("", "http://google.com", 3);
-  scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 3);
-  scan("", "http://www.alexa.com/topsites", 3);
-  scan("", "https://www.redflagnews.com/top-100-conservative/", 3);
+  // scan("", "http://www.1tv.ru/", 2);
+  // scan("", "http://yahoo.com", 3);
+  // scan("", "http://cnn.com", 3);
+  // scan("", "http://yandex.ru", 3);
+  // scan("", "http://ya.ru", 3);
+  // scan("", "http://google.com", 3);
+  // scan("", "https://en.wikipedia.org/wiki/List_of_most_popular_websites", 3);
+  // scan("", "http://www.alexa.com/topsites", 3);
+  // scan("", "https://www.redflagnews.com/top-100-conservative/", 3);
 
 
-  // if (1===4)
+  if (1===4)
   registerQProcessor("location",
       function (p, ctx){
         return new Promise(function(resolve) {
